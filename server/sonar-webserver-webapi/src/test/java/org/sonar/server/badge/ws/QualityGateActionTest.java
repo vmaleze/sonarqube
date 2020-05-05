@@ -51,6 +51,7 @@ import static org.sonar.api.measures.Metric.Level.OK;
 import static org.sonar.api.measures.Metric.ValueType.LEVEL;
 import static org.sonar.api.web.UserRole.USER;
 import static org.sonar.db.component.BranchType.BRANCH;
+import static org.sonar.db.component.BranchType.PULL_REQUEST;
 
 public class QualityGateActionTest {
 
@@ -162,6 +163,23 @@ public class QualityGateActionTest {
   }
 
   @Test
+  public void quality_gate_on_pull_request() {
+    ComponentDto project = db.components().insertPublicProject(p -> p.setPrivate(false));
+    userSession.registerComponents(project);
+    MetricDto metric = createQualityGateMetric();
+    db.measures().insertLiveMeasure(project, metric, m -> m.setData(OK.name()));
+    ComponentDto branch = db.components().insertProjectBranch(project, b -> b.setBranchType(PULL_REQUEST));
+    db.measures().insertLiveMeasure(branch, metric, m -> m.setData(ERROR.name()));
+
+    TestResponse response = ws.newRequest()
+        .setParam("project", branch.getKey())
+        .setParam("pull-request", branch.getPullRequest())
+        .execute();
+
+    checkResponse(response, ERROR);
+  }
+
+  @Test
   public void quality_gate_on_application() {
     OrganizationDto organization = db.organizations().insert();
     ComponentDto application = db.components().insertPublicApplication(organization);
@@ -238,6 +256,20 @@ public class QualityGateActionTest {
   }
 
   @Test
+  public void return_error_on_not_existing_pull_request() throws ParseException {
+    ComponentDto project = db.components().insertPublicProject(p -> p.setPrivate(false));
+    userSession.registerComponents(project);
+    db.components().insertProjectBranch(project, b -> b.setBranchType(PULL_REQUEST));
+
+    TestResponse response = ws.newRequest()
+        .setParam("project", project.getKey())
+        .setParam("pull-request", "unknown")
+        .execute();
+
+    checkError(response, "Project has not been found");
+  }
+
+  @Test
   public void return_error_if_measure_not_found() throws ParseException {
     ComponentDto project = db.components().insertPublicProject();
     userSession.registerComponents(project);
@@ -292,7 +324,8 @@ public class QualityGateActionTest {
       .extracting(Param::key, Param::isRequired)
       .containsExactlyInAnyOrder(
         tuple("project", true),
-        tuple("branch", false));
+        tuple("branch", false),
+        tuple("pull-request", false));
   }
 
   private MetricDto createQualityGateMetric() {

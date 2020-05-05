@@ -33,11 +33,13 @@ import static org.sonar.api.web.UserRole.USER;
 import static org.sonar.db.component.BranchType.BRANCH;
 import static org.sonar.server.ws.KeyExamples.KEY_BRANCH_EXAMPLE_001;
 import static org.sonar.server.ws.KeyExamples.KEY_PROJECT_EXAMPLE_001;
+import static org.sonar.server.ws.KeyExamples.KEY_PULL_REQUEST_EXAMPLE_001;
 
 public class ProjectBadgesSupport {
 
   private static final String PARAM_PROJECT = "project";
   private static final String PARAM_BRANCH = "branch";
+  private static final String PARAM_PULL_REQUEST = "pull-request";
 
   private final UserSession userSession;
   private final DbClient dbClient;
@@ -49,7 +51,7 @@ public class ProjectBadgesSupport {
     this.componentFinder = componentFinder;
   }
 
-  void addProjectAndBranchParams(WebService.NewAction action) {
+  void addProjectAndBranchAndPullRequestParams(WebService.NewAction action) {
     action.createParam(PARAM_PROJECT)
       .setDescription("Project or application key")
       .setRequired(true)
@@ -58,12 +60,17 @@ public class ProjectBadgesSupport {
       .createParam(PARAM_BRANCH)
       .setDescription("Branch key")
       .setExampleValue(KEY_BRANCH_EXAMPLE_001);
+    action
+        .createParam(PARAM_PULL_REQUEST)
+        .setDescription("Pull request key")
+        .setExampleValue(KEY_PULL_REQUEST_EXAMPLE_001);
   }
 
   BranchDto getBranch(DbSession dbSession, Request request) {
     try {
       String projectKey = request.mandatoryParam(PARAM_PROJECT);
       String branchName = request.param(PARAM_BRANCH);
+      String pullRequestKey = request.param(PARAM_PULL_REQUEST);
       ProjectDto project = componentFinder.getProjectOrApplicationByKey(dbSession, projectKey);
       userSession.checkProjectPermission(USER, project);
       if (project.isPrivate()) {
@@ -71,14 +78,12 @@ public class ProjectBadgesSupport {
       }
 
       BranchDto branch;
-      if (branchName == null) {
+      if (branchName == null && pullRequestKey == null) {
         branch = componentFinder.getMainBranch(dbSession, project);
-      } else {
+      } else if (pullRequestKey == null){
         branch = componentFinder.getBranchOrPullRequest(dbSession, project, branchName, null);
-      }
-
-      if (!branch.getBranchType().equals(BRANCH)) {
-        throw generateInvalidProjectException();
+      } else {
+        branch = componentFinder.getBranchOrPullRequest(dbSession, project, null, pullRequestKey);
       }
 
       return branch;

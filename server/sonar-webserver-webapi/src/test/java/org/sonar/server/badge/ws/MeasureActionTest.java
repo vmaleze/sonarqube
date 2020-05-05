@@ -65,6 +65,7 @@ import static org.sonar.api.measures.Metric.ValueType.RATING;
 import static org.sonar.api.measures.Metric.ValueType.WORK_DUR;
 import static org.sonar.api.web.UserRole.USER;
 import static org.sonar.db.component.BranchType.BRANCH;
+import static org.sonar.db.component.BranchType.PULL_REQUEST;
 import static org.sonar.server.badge.ws.SvgGenerator.Color.DEFAULT;
 import static org.sonar.server.badge.ws.SvgGenerator.Color.QUALITY_GATE_ERROR;
 import static org.sonar.server.badge.ws.SvgGenerator.Color.QUALITY_GATE_OK;
@@ -244,6 +245,35 @@ public class MeasureActionTest {
   }
 
   @Test
+  public void measure_on_pull_request() {
+    ComponentDto project = db.components().insertPublicProject(p -> p.setPrivate(false));
+    userSession.registerComponents(project);
+    MetricDto metric = db.measures().insertMetric(m -> m.setKey(BUGS_KEY).setValueType(INT.name()));
+    db.measures().insertLiveMeasure(project, metric, m -> m.setValue(5_000d));
+    ComponentDto branch = db.components().insertProjectBranch(project, b -> b.setBranchType(PULL_REQUEST));
+    db.measures().insertLiveMeasure(branch, metric, m -> m.setValue(15_000d));
+
+    TestResponse response = ws.newRequest()
+        .setParam("project", branch.getKey())
+        .setParam("pull-request", branch.getPullRequest())
+        .setParam("metric", metric.getKey())
+        .execute();
+
+    checkSvg(response, "bugs", "15k", DEFAULT);
+
+    // Second call with If-None-Match must return 304
+    response = ws.newRequest()
+        .setHeader("If-None-Match", response.getHeader("ETag"))
+        .setParam("project", branch.getKey())
+        .setParam("pull-request", branch.getPullRequest())
+        .setParam("metric", metric.getKey())
+        .execute();
+
+    assertThat(response.getInput()).isEmpty();
+    assertThat(response.getStatus()).isEqualTo(304);
+  }
+
+  @Test
   public void measure_on_application() {
     OrganizationDto organization = db.organizations().insert();
     ComponentDto application = db.components().insertPublicApplication(organization);
@@ -286,6 +316,22 @@ public class MeasureActionTest {
       .setParam("branch", "unknown")
       .setParam("metric", metric.getKey())
       .execute();
+
+    checkError(response, "Project has not been found");
+  }
+
+  @Test
+  public void return_error_if_pull_request_does_not_exist() throws ParseException {
+    ComponentDto project = db.components().insertPublicProject();
+    db.components().insertProjectBranch(project, b -> b.setBranchType(PULL_REQUEST));
+    userSession.registerComponents(project);
+    MetricDto metric = db.measures().insertMetric(m -> m.setKey(BUGS_KEY));
+
+    TestResponse response = ws.newRequest()
+        .setParam("project", project.getKey())
+        .setParam("pull-request", "unknown")
+        .setParam("metric", metric.getKey())
+        .execute();
 
     checkError(response, "Project has not been found");
   }
@@ -421,6 +467,7 @@ public class MeasureActionTest {
       .containsExactlyInAnyOrder(
         tuple("project", true),
         tuple("branch", false),
+        tuple("pull-request", false),
         tuple("metric", true));
   }
 

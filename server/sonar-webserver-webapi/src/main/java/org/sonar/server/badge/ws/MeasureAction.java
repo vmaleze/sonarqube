@@ -35,7 +35,6 @@ import org.sonar.api.server.ws.WebService.NewAction;
 import org.sonar.db.DbClient;
 import org.sonar.db.DbSession;
 import org.sonar.db.component.BranchDto;
-import org.sonar.db.component.ComponentDto;
 import org.sonar.db.measure.LiveMeasureDto;
 import org.sonar.db.metric.MetricDto;
 import org.sonar.server.badge.ws.SvgGenerator.Color;
@@ -129,7 +128,7 @@ public class MeasureAction implements ProjectBadgesWsAction {
         "Requires 'Browse' permission on the specified project.")
       .setSince("7.1")
       .setResponseExample(Resources.getResource(getClass(), "measure-example.svg"));
-    support.addProjectAndBranchParams(action);
+    support.addProjectAndBranchAndPullRequestParams(action);
     action.createParam(PARAM_METRIC)
       .setDescription("Metric key")
       .setRequired(true)
